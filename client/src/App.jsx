@@ -15,11 +15,14 @@ function EntryScreen({ onLogin }) {
 
     setLoading(true);
     try {
-      const res = await fetch("https://virtual-cosmos-5o0a.onrender.com/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim() }),
-      });
+      const res = await fetch(
+        "https://virtual-cosmos-5o0a.onrender.com/api/login",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: username.trim() }),
+        },
+      );
       const data = await res.json();
       if (data.success) {
         // UPGRADED: sessionStorage isolates memory to the specific tab
@@ -169,6 +172,13 @@ function App() {
         app.stage.addChild(player);
 
         const createOtherPlayer = (info) => {
+          otherPlayers[info.id] = {
+            sprite: other,
+            username: info.username,
+            typingBubble,
+            targetX: info.x,
+            targetY: info.y,
+          };
           if (otherPlayers[info.id]) return;
           const other = new PIXI.Graphics().circle(0, 0, 18).fill(0xf43f5e);
           other.x = info.x;
@@ -219,8 +229,9 @@ function App() {
 
         socketRef.current.on("playerMoved", (info) => {
           if (otherPlayers[info.id]) {
-            otherPlayers[info.id].sprite.x = info.x;
-            otherPlayers[info.id].sprite.y = info.y;
+            // UPGRADED: Update the target, not the sprite directly
+            otherPlayers[info.id].targetX = info.x;
+            otherPlayers[info.id].targetY = info.y;
           }
         });
 
@@ -306,6 +317,14 @@ function App() {
             player.x = Math.min(app.screen.width - 18, player.x + 4);
             moved = true;
           }
+          // --- UPGRADED: LERP (Smooth Interpolation) for other players ---
+          Object.values(otherPlayers).forEach((p) => {
+            if (p.targetX !== undefined && p.targetY !== undefined) {
+              // Move 20% of the distance to the target every frame
+              p.sprite.x += (p.targetX - p.sprite.x) * 0.2;
+              p.sprite.y += (p.targetY - p.sprite.y) * 0.2;
+            }
+          });
           if (moved)
             socketRef.current.emit("move", { x: player.x, y: player.y });
 
@@ -339,7 +358,6 @@ function App() {
           if (currentSortedStr !== refSortedStr) {
             nearbyRef.current = currentNearby;
             setNearbyPlayers(currentNearby);
-            if (currentNearby.length === 0) setMessages([]);
           }
         });
       } catch (err) {
