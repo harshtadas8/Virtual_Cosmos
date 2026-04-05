@@ -22,8 +22,9 @@ function EntryScreen({ onLogin }) {
       });
       const data = await res.json();
       if (data.success) {
-        localStorage.setItem("cosmos_user", data.username);
-        localStorage.setItem("cosmos_stats", data.messagesSent);
+        // UPGRADED: sessionStorage isolates memory to the specific tab
+        sessionStorage.setItem("cosmos_user", data.username);
+        sessionStorage.setItem("cosmos_stats", data.messagesSent);
         onLogin(data.username, data.messagesSent);
       }
     } catch (err) {
@@ -78,28 +79,28 @@ function EntryScreen({ onLogin }) {
 // --- MAIN COMPONENT: The Game ---
 function App() {
   const [currentUser, setCurrentUser] = useState(
-    localStorage.getItem("cosmos_user") || null,
+    sessionStorage.getItem("cosmos_user") || null,
   );
   const [lifetimeMessages, setLifetimeMessages] = useState(
-    Number(localStorage.getItem("cosmos_stats")) || 0,
+    Number(sessionStorage.getItem("cosmos_stats")) || 0,
   );
 
   const canvasRef = useRef(null);
   const socketRef = useRef(null);
   const appRef = useRef(null);
-  const typingTimeoutRef = useRef(null); 
+  const typingTimeoutRef = useRef(null);
 
   const [nearbyPlayers, setNearbyPlayers] = useState([]);
   const nearbyRef = useRef([]);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
-  
+
   const [typingUsers, setTypingUsers] = useState({});
   const chatEndRef = useRef(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, typingUsers]); 
+  }, [messages, typingUsers]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -131,35 +132,34 @@ function App() {
           const star = new PIXI.Graphics();
           const radius = Math.random() * 1.5 + 0.5;
           const alpha = Math.random() * 0.7 + 0.1;
-          
+
           star.circle(0, 0, radius).fill({ color: 0xffffff, alpha: alpha });
           star.x = Math.random() * app.screen.width;
           star.y = Math.random() * app.screen.height;
-          star.speed = (Math.random() * 0.3) + 0.05; 
-          
+          star.speed = Math.random() * 0.3 + 0.05;
+
           app.stage.addChild(star);
           stars.push(star);
         }
 
         const player = new PIXI.Graphics()
           .circle(0, 0, 18)
-          .fill(0x0ea5e9) 
+          .fill(0x0ea5e9)
           .circle(0, 0, PROXIMITY_RADIUS)
-          .stroke({ width: 2, color: 0x0ea5e9, alpha: 0.15 }); 
+          .stroke({ width: 2, color: 0x0ea5e9, alpha: 0.15 });
 
-        // --- UPGRADED: Local Player Floating Nameplate ---
         const localNameplate = new PIXI.Text({
           text: currentUser,
           style: {
-            fontFamily: 'monospace',
+            fontFamily: "monospace",
             fontSize: 10,
-            fill: 0x7dd3fc, // Sky 300 color
-            fontWeight: 'bold',
-            letterSpacing: 1
-          }
+            fill: 0x7dd3fc,
+            fontWeight: "bold",
+            letterSpacing: 1,
+          },
         });
-        localNameplate.anchor.set(0.5, 1); // Center it horizontally
-        localNameplate.y = -26; // Hover slightly above the dot
+        localNameplate.anchor.set(0.5, 1);
+        localNameplate.y = -26;
         player.addChild(localNameplate);
 
         const offsetX = (Math.random() - 0.5) * 100;
@@ -174,33 +174,39 @@ function App() {
           other.x = info.x;
           other.y = info.y;
 
-          // --- UPGRADED: Remote Player Floating Nameplate ---
           const otherNameplate = new PIXI.Text({
             text: info.username,
             style: {
-              fontFamily: 'monospace',
+              fontFamily: "monospace",
               fontSize: 10,
-              fill: 0xfca5a5, // Rose 300 color to match red dot
-              fontWeight: 'bold',
-              letterSpacing: 1
-            }
+              fill: 0xfca5a5,
+              fontWeight: "bold",
+              letterSpacing: 1,
+            },
           });
           otherNameplate.anchor.set(0.5, 1);
           otherNameplate.y = -26;
           other.addChild(otherNameplate);
-          
-          // --- UPGRADED: Shifted Typing Bubble Higher ---
+
           const typingBubble = new PIXI.Graphics()
-            .roundRect(-20, -65, 40, 20, 8).fill(0x1e293b) // Shifted Y from -45 to -65
-            .circle(-10, -55, 2).fill(0x38bdf8) // Shifted dots
-            .circle(0, -55, 2).fill(0x38bdf8)
-            .circle(10, -55, 2).fill(0x38bdf8);
-            
-          typingBubble.visible = false; 
+            .roundRect(-20, -65, 40, 20, 8)
+            .fill(0x1e293b)
+            .circle(-10, -55, 2)
+            .fill(0x38bdf8)
+            .circle(0, -55, 2)
+            .fill(0x38bdf8)
+            .circle(10, -55, 2)
+            .fill(0x38bdf8);
+
+          typingBubble.visible = false;
           other.addChild(typingBubble);
 
           app.stage.addChild(other);
-          otherPlayers[info.id] = { sprite: other, username: info.username, typingBubble };
+          otherPlayers[info.id] = {
+            sprite: other,
+            username: info.username,
+            typingBubble,
+          };
         };
 
         socketRef.current.on("currentPlayers", (ps) => {
@@ -220,12 +226,10 @@ function App() {
 
         socketRef.current.on("user_typing", ({ id, isTyping }) => {
           if (otherPlayers[id]) {
-            // Show bubble on avatar
             if (otherPlayers[id].typingBubble) {
-               otherPlayers[id].typingBubble.visible = isTyping;
+              otherPlayers[id].typingBubble.visible = isTyping;
             }
-            
-            // Show status in chat panel
+
             setTypingUsers((prev) => {
               const updated = { ...prev };
               if (isTyping) {
@@ -274,34 +278,39 @@ function App() {
           username: currentUser,
         });
 
-        const handleDown = (e) => { keys[e.code] = true; };
-        const handleUp = (e) => { keys[e.code] = false; };
+        const handleDown = (e) => {
+          keys[e.code] = true;
+        };
+        const handleUp = (e) => {
+          keys[e.code] = false;
+        };
         window.addEventListener("keydown", handleDown);
         window.addEventListener("keyup", handleUp);
 
         app.ticker.add(() => {
           let moved = false;
-          // UPGRADED: Screen Boundary Collision
-          if (keys["KeyW"] || keys["ArrowUp"]) { 
-            player.y = Math.max(18, player.y - 4); 
-            moved = true; 
+          // UPGRADED: Screen Boundary Collision Added Here
+          if (keys["KeyW"] || keys["ArrowUp"]) {
+            player.y = Math.max(18, player.y - 4);
+            moved = true;
           }
-          if (keys["KeyS"] || keys["ArrowDown"]) { 
-            player.y = Math.min(app.screen.height - 18, player.y + 4); 
-            moved = true; 
+          if (keys["KeyS"] || keys["ArrowDown"]) {
+            player.y = Math.min(app.screen.height - 18, player.y + 4);
+            moved = true;
           }
-          if (keys["KeyA"] || keys["ArrowLeft"]) { 
-            player.x = Math.max(18, player.x - 4); 
-            moved = true; 
+          if (keys["KeyA"] || keys["ArrowLeft"]) {
+            player.x = Math.max(18, player.x - 4);
+            moved = true;
           }
-          if (keys["KeyD"] || keys["ArrowRight"]) { 
-            player.x = Math.min(app.screen.width - 18, player.x + 4); 
-            moved = true; 
+          if (keys["KeyD"] || keys["ArrowRight"]) {
+            player.x = Math.min(app.screen.width - 18, player.x + 4);
+            moved = true;
           }
-          if (moved) socketRef.current.emit("move", { x: player.x, y: player.y });
+          if (moved)
+            socketRef.current.emit("move", { x: player.x, y: player.y });
 
-          stars.forEach(star => {
-            star.x -= star.speed; 
+          stars.forEach((star) => {
+            star.x -= star.speed;
             if (star.x < 0) {
               star.x = app.screen.width;
               star.y = Math.random() * app.screen.height;
@@ -320,8 +329,12 @@ function App() {
             }
           });
 
-          const currentSortedStr = JSON.stringify(currentNearby.map((n) => n.id).sort());
-          const refSortedStr = JSON.stringify(nearbyRef.current.map((n) => n.id).sort());
+          const currentSortedStr = JSON.stringify(
+            currentNearby.map((n) => n.id).sort(),
+          );
+          const refSortedStr = JSON.stringify(
+            nearbyRef.current.map((n) => n.id).sort(),
+          );
 
           if (currentSortedStr !== refSortedStr) {
             nearbyRef.current = currentNearby;
@@ -355,7 +368,7 @@ function App() {
     setInputText(e.target.value);
 
     if (socketRef.current) {
-      socketRef.current.emit("typing", true); 
+      socketRef.current.emit("typing", true);
 
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
@@ -373,22 +386,22 @@ function App() {
       message: inputText,
       senderName: currentUser,
     });
-    
+
     setInputText("");
-    
+
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     socketRef.current.emit("typing", false);
 
     setLifetimeMessages((prev) => {
       const newTotal = prev + 1;
-      localStorage.setItem("cosmos_stats", newTotal);
+      sessionStorage.setItem("cosmos_stats", newTotal);
       return newTotal;
     });
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("cosmos_user");
-    localStorage.removeItem("cosmos_stats");
+    sessionStorage.removeItem("cosmos_user");
+    sessionStorage.removeItem("cosmos_stats");
     window.location.reload();
   };
 
@@ -482,21 +495,35 @@ function App() {
                 </span>
               </div>
             ))}
-            
+
             {Object.entries(typingUsers).map(([id, name]) => {
               if (!nearbyPlayers.some((p) => p.id === id)) return null;
               return (
-                <div key={id} className="flex items-end gap-2 mt-2 text-slate-400">
-                  <span className="text-[10px] font-mono italic">{name} is typing</span>
+                <div
+                  key={id}
+                  className="flex items-end gap-2 mt-2 text-slate-400"
+                >
+                  <span className="text-[10px] font-mono italic">
+                    {name} is typing
+                  </span>
                   <div className="flex gap-1 mb-1.5 ml-1">
-                    <span className="h-1 w-1 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                    <span className="h-1 w-1 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                    <span className="h-1 w-1 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                    <span
+                      className="h-1 w-1 bg-sky-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "0ms" }}
+                    ></span>
+                    <span
+                      className="h-1 w-1 bg-sky-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "150ms" }}
+                    ></span>
+                    <span
+                      className="h-1 w-1 bg-sky-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "300ms" }}
+                    ></span>
                   </div>
                 </div>
               );
             })}
-            
+
             <div ref={chatEndRef} />
           </div>
 
