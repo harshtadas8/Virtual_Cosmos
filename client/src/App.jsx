@@ -15,7 +15,7 @@ function EntryScreen({ onLogin }) {
 
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:3000/api/login", {
+      const res = await fetch("https://virtual-cosmos-5o0a.onrender.com/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim() }),
@@ -105,7 +105,7 @@ function App() {
   useEffect(() => {
     if (!currentUser) return;
 
-    socketRef.current = io("http://localhost:3000");
+    socketRef.current = io("https://virtual-cosmos-5o0a.onrender.com");
     let isMounted = true;
     let app = null;
     const keys = {};
