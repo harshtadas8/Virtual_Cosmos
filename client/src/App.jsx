@@ -25,7 +25,6 @@ function EntryScreen({ onLogin }) {
       );
       const data = await res.json();
       if (data.success) {
-        // UPGRADED: sessionStorage isolates memory to the specific tab
         sessionStorage.setItem("cosmos_user", data.username);
         sessionStorage.setItem("cosmos_stats", data.messagesSent);
         onLogin(data.username, data.messagesSent);
@@ -165,20 +164,14 @@ function App() {
         localNameplate.y = -26;
         player.addChild(localNameplate);
 
-        const offsetX = (Math.random() - 0.5) * 100;
-        const offsetY = (Math.random() - 0.5) * 100;
-        player.x = app.screen.width / 2 + offsetX;
-        player.y = app.screen.height / 2 + offsetY;
+        // UPGRADED: Fixed spawn coordinates so all devices start together
+        const offsetX = (Math.random() - 0.5) * 50;
+        const offsetY = (Math.random() - 0.5) * 50;
+        player.x = 400 + offsetX;
+        player.y = 300 + offsetY;
         app.stage.addChild(player);
 
         const createOtherPlayer = (info) => {
-          otherPlayers[info.id] = {
-            sprite: other,
-            username: info.username,
-            typingBubble,
-            targetX: info.x,
-            targetY: info.y,
-          };
           if (otherPlayers[info.id]) return;
           const other = new PIXI.Graphics().circle(0, 0, 18).fill(0xf43f5e);
           other.x = info.x;
@@ -212,10 +205,14 @@ function App() {
           other.addChild(typingBubble);
 
           app.stage.addChild(other);
+
+          // UPGRADED: Added targetX and targetY for smooth network gliding
           otherPlayers[info.id] = {
             sprite: other,
             username: info.username,
             typingBubble,
+            targetX: info.x,
+            targetY: info.y,
           };
         };
 
@@ -229,7 +226,7 @@ function App() {
 
         socketRef.current.on("playerMoved", (info) => {
           if (otherPlayers[info.id]) {
-            // UPGRADED: Update the target, not the sprite directly
+            // UPGRADED: Update the target coordinates instead of snapping
             otherPlayers[info.id].targetX = info.x;
             otherPlayers[info.id].targetY = info.y;
           }
@@ -300,7 +297,7 @@ function App() {
 
         app.ticker.add(() => {
           let moved = false;
-          // UPGRADED: Screen Boundary Collision Added Here
+
           if (keys["KeyW"] || keys["ArrowUp"]) {
             player.y = Math.max(18, player.y - 4);
             moved = true;
@@ -317,14 +314,6 @@ function App() {
             player.x = Math.min(app.screen.width - 18, player.x + 4);
             moved = true;
           }
-          // --- UPGRADED: LERP (Smooth Interpolation) for other players ---
-          Object.values(otherPlayers).forEach((p) => {
-            if (p.targetX !== undefined && p.targetY !== undefined) {
-              // Move 20% of the distance to the target every frame
-              p.sprite.x += (p.targetX - p.sprite.x) * 0.2;
-              p.sprite.y += (p.targetY - p.sprite.y) * 0.2;
-            }
-          });
           if (moved)
             socketRef.current.emit("move", { x: player.x, y: player.y });
 
@@ -333,6 +322,14 @@ function App() {
             if (star.x < 0) {
               star.x = app.screen.width;
               star.y = Math.random() * app.screen.height;
+            }
+          });
+
+          // UPGRADED: Smooth Interpolation (LERP) Loop
+          Object.values(otherPlayers).forEach((p) => {
+            if (p.targetX !== undefined && p.targetY !== undefined) {
+              p.sprite.x += (p.targetX - p.sprite.x) * 0.2;
+              p.sprite.y += (p.targetY - p.sprite.y) * 0.2;
             }
           });
 
@@ -358,6 +355,7 @@ function App() {
           if (currentSortedStr !== refSortedStr) {
             nearbyRef.current = currentNearby;
             setNearbyPlayers(currentNearby);
+            // UPGRADED: Removed the 'setMessages([])' here so history is kept!
           }
         });
       } catch (err) {
