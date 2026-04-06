@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import * as PIXI from "pixi.js";
 import { io } from "socket.io-client";
 
+// How close avatars need to be (in pixels) to open the chat link
 const PROXIMITY_RADIUS = 120;
 
-// --- SUB-COMPONENT: The Login Screen ---
+// Simple login overlay to grab a username before entering the canvas
 function EntryScreen({ onLogin }) {
   const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,6 +16,7 @@ function EntryScreen({ onLogin }) {
 
     setLoading(true);
     try {
+      // Hit our live Render backend
       const res = await fetch(
         "https://virtual-cosmos-5o0a.onrender.com/api/login",
         {
@@ -24,7 +26,10 @@ function EntryScreen({ onLogin }) {
         },
       );
       const data = await res.json();
+
       if (data.success) {
+        // Using sessionStorage instead of localStorage so we can test with multiple tabs
+        // locally without the tabs sharing/overwriting the same username
         sessionStorage.setItem("cosmos_user", data.username);
         sessionStorage.setItem("cosmos_stats", data.messagesSent);
         onLogin(data.username, data.messagesSent);
@@ -78,7 +83,7 @@ function EntryScreen({ onLogin }) {
   );
 }
 
-// --- MAIN COMPONENT: The Game ---
+// The main spatial arena
 function App() {
   const [currentUser, setCurrentUser] = useState(
     sessionStorage.getItem("cosmos_user") || null,
@@ -96,10 +101,10 @@ function App() {
   const nearbyRef = useRef([]);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState("");
-
   const [typingUsers, setTypingUsers] = useState({});
   const chatEndRef = useRef(null);
 
+  // Auto-scroll to the bottom of the chat panel when new stuff comes in
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingUsers]);
@@ -115,12 +120,14 @@ function App() {
 
     async function setup() {
       try {
+        // Initialize WebGL canvas
         app = new PIXI.Application();
         await app.init({
           background: "#050510",
           resizeTo: window,
           antialias: true,
         });
+
         if (!isMounted) {
           app.destroy(true, { children: true });
           return;
@@ -129,6 +136,7 @@ function App() {
         appRef.current = app;
         if (canvasRef.current) canvasRef.current.appendChild(app.canvas);
 
+        // Generate the parallax starfield background
         const stars = [];
         for (let i = 0; i < 150; i++) {
           const star = new PIXI.Graphics();
@@ -144,6 +152,7 @@ function App() {
           stars.push(star);
         }
 
+        // Draw the local player (Blue dot with radar ring)
         const player = new PIXI.Graphics()
           .circle(0, 0, 18)
           .fill(0x0ea5e9)
@@ -164,15 +173,18 @@ function App() {
         localNameplate.y = -26;
         player.addChild(localNameplate);
 
-        // UPGRADED: Fixed spawn coordinates so all devices start together
+        // Hardcode the spawn point so all devices drop in the same absolute location
+        // We add a tiny random offset so people don't spawn perfectly on top of each other
         const offsetX = (Math.random() - 0.5) * 50;
         const offsetY = (Math.random() - 0.5) * 50;
         player.x = 400 + offsetX;
         player.y = 300 + offsetY;
         app.stage.addChild(player);
 
+        // Factory function for when remote players join
         const createOtherPlayer = (info) => {
           if (otherPlayers[info.id]) return;
+
           const other = new PIXI.Graphics().circle(0, 0, 18).fill(0xf43f5e);
           other.x = info.x;
           other.y = info.y;
@@ -191,6 +203,7 @@ function App() {
           otherNameplate.y = -26;
           other.addChild(otherNameplate);
 
+          // Floating WhatsApp-style typing dots
           const typingBubble = new PIXI.Graphics()
             .roundRect(-20, -65, 40, 20, 8)
             .fill(0x1e293b)
@@ -206,7 +219,7 @@ function App() {
 
           app.stage.addChild(other);
 
-          // UPGRADED: Added targetX and targetY for smooth network gliding
+          // Track targetX and targetY here so we can glide them smoothly in the ticker
           otherPlayers[info.id] = {
             sprite: other,
             username: info.username,
@@ -215,6 +228,8 @@ function App() {
             targetY: info.y,
           };
         };
+
+        // --- Socket Listeners ---
 
         socketRef.current.on("currentPlayers", (ps) => {
           Object.keys(ps).forEach(
@@ -226,7 +241,7 @@ function App() {
 
         socketRef.current.on("playerMoved", (info) => {
           if (otherPlayers[info.id]) {
-            // UPGRADED: Update the target coordinates instead of snapping
+            // Update their network target, NOT their actual sprite (the game loop handles that)
             otherPlayers[info.id].targetX = info.x;
             otherPlayers[info.id].targetY = info.y;
           }
@@ -268,6 +283,7 @@ function App() {
             return;
           }
 
+          // Spatial filtering: only accept messages if they are within our circle
           const senderData = otherPlayers[msg.senderId];
           if (senderData) {
             const dist = Math.sqrt(
@@ -286,6 +302,7 @@ function App() {
           username: currentUser,
         });
 
+        // Input listeners
         const handleDown = (e) => {
           keys[e.code] = true;
         };
@@ -295,9 +312,11 @@ function App() {
         window.addEventListener("keydown", handleDown);
         window.addEventListener("keyup", handleUp);
 
+        // --- The Main 60FPS Game Loop ---
         app.ticker.add(() => {
           let moved = false;
 
+          // Local Movement & Boundary Clamping
           if (keys["KeyW"] || keys["ArrowUp"]) {
             player.y = Math.max(18, player.y - 4);
             moved = true;
@@ -314,9 +333,12 @@ function App() {
             player.x = Math.min(app.screen.width - 18, player.x + 4);
             moved = true;
           }
-          if (moved)
-            socketRef.current.emit("move", { x: player.x, y: player.y });
 
+          if (moved) {
+            socketRef.current.emit("move", { x: player.x, y: player.y });
+          }
+
+          // Animate background stars drifting
           stars.forEach((star) => {
             star.x -= star.speed;
             if (star.x < 0) {
@@ -325,7 +347,8 @@ function App() {
             }
           });
 
-          // UPGRADED: Smooth Interpolation (LERP) Loop
+          // LERP (Linear Interpolation)
+          // Smoothly glide remote players toward their target coordinates to hide network latency
           Object.values(otherPlayers).forEach((p) => {
             if (p.targetX !== undefined && p.targetY !== undefined) {
               p.sprite.x += (p.targetX - p.sprite.x) * 0.2;
@@ -333,6 +356,7 @@ function App() {
             }
           });
 
+          // Check proximity to see who we are allowed to talk to right now
           let currentNearby = [];
           Object.keys(otherPlayers).forEach((id) => {
             const otherData = otherPlayers[id];
@@ -345,6 +369,7 @@ function App() {
             }
           });
 
+          // Only update React state if the list of nearby people actually changed
           const currentSortedStr = JSON.stringify(
             currentNearby.map((n) => n.id).sort(),
           );
@@ -355,7 +380,6 @@ function App() {
           if (currentSortedStr !== refSortedStr) {
             nearbyRef.current = currentNearby;
             setNearbyPlayers(currentNearby);
-            // UPGRADED: Removed the 'setMessages([])' here so history is kept!
           }
         });
       } catch (err) {
@@ -383,11 +407,12 @@ function App() {
   const handleInputChange = (e) => {
     setInputText(e.target.value);
 
+    // Broadcast that we started typing
     if (socketRef.current) {
       socketRef.current.emit("typing", true);
 
+      // Debounce the typing indicator so it turns off after 2 seconds of no input
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-
       typingTimeoutRef.current = setTimeout(() => {
         socketRef.current.emit("typing", false);
       }, 2000);
@@ -408,6 +433,7 @@ function App() {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     socketRef.current.emit("typing", false);
 
+    // Bump the local stat counter so it feels instant
     setLifetimeMessages((prev) => {
       const newTotal = prev + 1;
       sessionStorage.setItem("cosmos_stats", newTotal);
@@ -432,8 +458,10 @@ function App() {
     );
   }
 
+  // --- Render the main UI overlay ---
   return (
     <div className="relative w-screen h-screen bg-[#050510] overflow-hidden font-sans select-none">
+      {/* Top Left Stats Panel */}
       <div className="absolute top-6 left-6 z-20 pointer-events-none">
         <div className="p-4 bg-slate-950/80 backdrop-blur-md rounded-xl border border-sky-500/30 shadow-[0_0_20px_rgba(14,165,233,0.15)] flex flex-col gap-1 pointer-events-auto">
           <div className="flex justify-between items-start gap-8">
@@ -469,6 +497,7 @@ function App() {
           </div>
         </div>
 
+        {/* Dynamic Radar Status */}
         <div
           className={`mt-4 px-4 py-2.5 rounded-lg border backdrop-blur-md transition-all duration-500 w-fit ${nearbyPlayers.length > 0 ? "bg-sky-500/20 border-sky-400/50 shadow-[0_0_15px_rgba(14,165,233,0.4)]" : "bg-slate-900/60 border-slate-700"}`}
         >
@@ -482,6 +511,7 @@ function App() {
         </div>
       </div>
 
+      {/* Right Side Chat Panel (Only mounts if someone is in range) */}
       {nearbyPlayers.length > 0 && (
         <div className="absolute top-1/2 -translate-y-1/2 right-8 z-30 w-[350px] h-[550px] bg-slate-950/80 backdrop-blur-xl rounded-2xl border border-sky-500/30 shadow-[0_0_40px_rgba(14,165,233,0.2)] flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-8 duration-500">
           <div className="px-5 py-4 border-b border-sky-500/30 bg-gradient-to-r from-sky-900/40 to-transparent">
@@ -512,6 +542,7 @@ function App() {
               </div>
             ))}
 
+            {/* Render typing indicators for nearby users */}
             {Object.entries(typingUsers).map(([id, name]) => {
               if (!nearbyPlayers.some((p) => p.id === id)) return null;
               return (
@@ -577,6 +608,7 @@ function App() {
         </div>
       )}
 
+      {/* PixiJS mounts the canvas here */}
       <div ref={canvasRef} className="absolute inset-0 z-10" />
     </div>
   );
